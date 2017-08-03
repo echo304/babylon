@@ -433,12 +433,7 @@ export default class ExpressionParser extends LValParser {
         noCalls,
       );
     } else if (this.match(tt.questionDot)) {
-      if (!this.hasPlugin("optionalChaining")) {
-        this.raise(
-          startPos,
-          "You can only use optional-chaining when the 'optionalChaining' plugin is enabled.",
-        );
-      }
+      this.expectPlugin("optionalChaining");
 
       if (noCalls && this.lookahead().type == tt.parenL) {
         state.stop = true;
@@ -643,11 +638,11 @@ export default class ExpressionParser extends LValParser {
         return this.finishNode(node, "Super");
 
       case tt._import:
-        if (this.hasPlugin("importMeta") && this.lookahead().type === tt.dot) {
+        if (this.lookahead().type === tt.dot) {
           return this.parseImportMetaProperty();
         }
 
-        if (!this.hasPlugin("dynamicImport")) this.unexpected();
+        this.expectPlugin("dynamicImport");
 
         node = this.startNode();
         this.next();
@@ -695,7 +690,9 @@ export default class ExpressionParser extends LValParser {
         return id;
 
       case tt._do:
-        if (this.hasPlugin("doExpressions")) {
+        // TODO
+        if (true) {
+          this.expectPlugin("doExpressions");
           const node = this.startNode();
           this.next();
           const oldInFunction = this.state.inFunction;
@@ -808,11 +805,7 @@ export default class ExpressionParser extends LValParser {
   parseFunctionExpression(): N.FunctionExpression | N.MetaProperty {
     const node = this.startNode();
     const meta = this.parseIdentifier(true);
-    if (
-      this.state.inGenerator &&
-      this.hasPlugin("functionSent") &&
-      this.eat(tt.dot)
-    ) {
+    if (this.state.inGenerator && this.eat(tt.dot)) {
       return this.parseMetaProperty(node, meta, "sent");
     }
     return this.parseFunction(node, false);
@@ -824,6 +817,16 @@ export default class ExpressionParser extends LValParser {
     propertyName: string,
   ): N.MetaProperty {
     node.meta = meta;
+
+    if (meta.name === "function" && propertyName === "sent") {
+      if (this.isContextual(propertyName)) {
+        this.expectPlugin("functionSent");
+      } else if (!this.hasPlugin("functionSent")) {
+        // They didn't actually say `function.sent`, just `function.`, so a simple error would be less confusing.
+        this.unexpected();
+      }
+    }
+
     node.property = this.parseIdentifier(true);
 
     if (node.property.name !== propertyName) {
@@ -840,6 +843,18 @@ export default class ExpressionParser extends LValParser {
     const node = this.startNode();
     const id = this.parseIdentifier(true);
     this.expect(tt.dot);
+
+    if (id.name === "import") {
+      if (this.isContextual("meta")) {
+        this.expectPlugin("importMeta");
+      } else if (!this.hasPlugin("importMeta")) {
+        this.raise(
+          null,
+          `Dynamic imports require a parameter: import('a.js').then`,
+        );
+      }
+    }
+
     if (!this.inModule) {
       this.raise(
         id.start,
@@ -1116,7 +1131,8 @@ export default class ExpressionParser extends LValParser {
         decorators = [];
       }
 
-      if (this.hasPlugin("objectRestSpread") && this.match(tt.ellipsis)) {
+      if (this.match(tt.ellipsis)) {
+        this.expectPlugin("objectRestSpread");
         prop = this.parseSpread(isPattern ? { start: 0 } : undefined);
         prop.type = isPattern ? "RestElement" : "SpreadElement";
         if (isPattern) this.toAssignable(prop.argument, true, "object pattern");
@@ -1173,8 +1189,11 @@ export default class ExpressionParser extends LValParser {
           prop.computed = false;
         } else {
           isAsync = true;
-          if (this.hasPlugin("asyncGenerators"))
-            isGenerator = this.eat(tt.star);
+          if (this.match(tt.star)) {
+            this.expectPlugin("asyncGenerators");
+            this.next();
+            isGenerator = true;
+          }
           this.parsePropertyName(prop);
         }
       } else {
