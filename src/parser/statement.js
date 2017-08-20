@@ -1146,13 +1146,13 @@ export default class StatementParser extends ExpressionParser {
 
   parseClassProperty(node: N.ClassProperty): N.ClassProperty {
     if (!node.typeAnnotation) {
-      this.expectOnePlugin(["classProperties"]);
+      this.expectPlugin("classProperties");
     }
 
     this.state.inClassProperty = true;
 
     if (this.match(tt.eq)) {
-      this.expectOnePlugin(["classProperties"]);
+      this.expectPlugin("classProperties");
       this.next();
       node.value = this.parseMaybeAssign();
     } else {
@@ -1160,6 +1160,7 @@ export default class StatementParser extends ExpressionParser {
     }
     this.semicolon();
     this.state.inClassProperty = false;
+
     return this.finishNode(node, "ClassProperty");
   }
 
